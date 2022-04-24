@@ -351,12 +351,13 @@ for speaker in ['f2']:
     files_sound ['train'] = files_sound ['all'][6:]
 
     
-    
+    max_mri_frames = 500
+    select = 25
     for train_valid in ['train', 'valid']:
         n_files = len(files_mri[train_valid])
         n_file = 0
         n_max_mri_frames = n_files * 1000
-        mri[train_valid] = np.empty((n_max_mri_frames, n_width, n_height))
+        mri[train_valid] = np.empty((n_files, n_width, n_height))
         sound[train_valid] = np.empty((n_files, nz))
         mri_size = 0
         sound_size = 0
@@ -375,16 +376,15 @@ for speaker in ['f2']:
                 mgc_mri_len = mri_data.shape[2]
                 
                 mri_data = mri_data[:, :, 0:mgc_mri_len]
-                
-                for i in range(mgc_mri_len):
-                    mri[train_valid][mri_size + i] = mri_data[:, :, i] # original, 68x68
+                mri[train_valid][n_file] = np.mean(mri_data,axis=2) # original, 68x68
+                n_file += 1
         n_file = 0
         for file in files_sound[train_valid]:
             sound[train_valid][n_file] = genfromtxt(dir_sound+file)
             n_file += 1
 
 
-        mri[train_valid] = mri[train_valid][0 : mri_size].reshape(-1, n_width*n_height)
+        mri[train_valid] = mri[train_valid].reshape(-1, n_width*n_height)
 
 
     
@@ -393,13 +393,9 @@ for speaker in ['f2']:
     
     # input: normalization to zero mean, unit variance
     # feature by feature
-
-    for train_valid in ['train', 'valid']:
-
-        mri[train_valid] = mri[train_valid].reshape(-1, n_width * n_height)
     
-    y_train = torch.tensor(mri['train'])
-    X_train = torch.tensor(sound['train'])
+    y_train = torch.tensor(mri['train']).float().reshape((-1,1,n_width,n_height))
+    X_train = torch.tensor(sound['train']).float().reshape((-1,nz,1,1))
     dataset_train = torch.utils.data.TensorDataset(X_train, y_train)
 
 
