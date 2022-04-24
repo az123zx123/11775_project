@@ -35,6 +35,7 @@ from IPython.display import HTML
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
+from numpy import genfromtxt
 
 # Set random seed for reproducibility
 manualSeed = 775
@@ -60,7 +61,7 @@ image_size = 68
 nc = 1
 
 # Size of z latent vector (i.e. size of generator input)
-nz = 100
+nz = 1024
 
 # Size of feature maps in generator
 ngf = 68
@@ -222,7 +223,8 @@ def train_epoch(netD, netG, optimizerD, optimizerG, dataloader):
         label = torch.full((b_size,), real_label, dtype=torch.float, device=device)
         # Forward pass real batch through D
         # Calculate loss on all-real batch
-        errD_real = criterion(real_cpu, label)
+        output = netD(real_cpu).view(-1)
+        errD_real = criterion(output, label)
         # Calculate gradients for D in backward pass
         errD_real.backward()
         D_x = output.mean().item()
@@ -270,13 +272,6 @@ def train_epoch(netD, netG, optimizerD, optimizerG, dataloader):
         # Save Losses for plotting later
         G_losses.append(errG.item())
         D_losses.append(errD.item())
-
-        # Check how the generator is doing by saving G's output on fixed_noise
-        if (iters % 500 == 0) or ((epoch == num_epochs-1) and (i == len(dataloader)-1)):
-            with torch.no_grad():
-                fake = netG(fixed_noise).detach().cpu()
-            img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
-
         iters += 1
     return G_losses, D_losses
 
@@ -296,9 +291,10 @@ num_epochs = 5
 # Learning rate for optimizers
 lr = 0.0002
 
-for speaker in ['f1', 'f2', 'm1', 'm2']:
+for speaker in ['f2']:
     # TODO: modify this according to your data path
-    dir_mri = '/home/csapot/deep_learning_mri/usctimit_mri/' + speaker + '/'
+    dir_mri = './data/'+speaker+ '/avi/'
+    dir_sound = './data/'+speaker + '/soundnet/avg_pooling/y_scns/'
 
 
     
@@ -309,7 +305,6 @@ for speaker in ['f1', 'f2', 'm1', 'm2']:
     order = 24
     alpha = 0.42
     stage = 3
-    n_mgc = order + 1
 
     # context window of LSTM
     n_sequence = 10
@@ -326,7 +321,7 @@ for speaker in ['f1', 'f2', 'm1', 'm2']:
     # - the remaining (86 files) for training
     files_mri = dict()
     mri = dict()
-    mgc = dict()
+    sound = dict()
     files_mri['all'] = []
     if os.path.isdir(dir_mri):
         for file in sorted(os.listdir(dir_mri)):
@@ -344,46 +339,52 @@ for speaker in ['f1', 'f2', 'm1', 'm2']:
     print('valid files', files_mri['valid'])
     print('test files', files_mri['test'])   # ['usctimit_mri_f1_146_150.avi', 'usctimit_mri_f1_441_445.avi']
     
+    files_sound = dict()
+    files_sound ['all'] = []
+    if os.path.isdir(dir_sound):
+        for file in sorted(os.listdir(dir_sound )):
+            if ".csv" in file:
+                files_sound ['all'] += [file]
+            
+    files_sound ['valid'] = files_sound ['all'][0:4]
+    files_sound ['test'] = files_sound ['all'][4:6]
+    files_sound ['train'] = files_sound ['all'][6:]
+
+    
+    
     for train_valid in ['train', 'valid']:
         n_files = len(files_mri[train_valid])
         n_file = 0
         n_max_mri_frames = n_files * 1000
         mri[train_valid] = np.empty((n_max_mri_frames, n_width, n_height))
-        mgc[train_valid] = np.empty((n_max_mri_frames, n_mgc))
+        sound[train_valid] = np.empty((n_files, nz))
         mri_size = 0
-        mgc_size = 0
+        sound_size = 0
 
         for file in files_mri[train_valid]:
             try:
                 print('starting', train_valid, file)
                 mri_data = load_video_3D(dir_mri + file, framesPerSec)
-                (mgc_lsp_coeff, lf0) = get_mgc_lsp_coeff(dir_mri + file[:-4])
             except ValueError as e:
                 print("wrong data, check manually!", e)
             
             else:
                 print('minmax:', np.min(mri_data), np.max(mri_data))
-                n_file += 1
                 
-                mgc_mri_len = np.min((mri_data.shape[2], len(mgc_lsp_coeff)))
+                
+                mgc_mri_len = mri_data.shape[2]
                 
                 mri_data = mri_data[:, :, 0:mgc_mri_len]
-                mgc_lsp_coeff = mgc_lsp_coeff[0:mgc_mri_len]
-                
-                if mri_size + mgc_mri_len > n_max_mri_frames:
-                    raise
                 
                 for i in range(mgc_mri_len):
                     mri[train_valid][mri_size + i] = mri_data[:, :, i] # original, 68x68
-                    mgc[train_valid][mgc_size + i] = mgc_lsp_coeff[i]
-                
-                mri_size += mgc_mri_len
-                mgc_size += mgc_mri_len
-                
-                print('n_frames_all: ', mri_size, 'mgc_size: ', mgc_size)
-                    
+        n_file = 0
+        for file in files_sound[train_valid]:
+            sound[train_valid][n_file] = genfromtxt(dir_sound+file)
+            n_file += 1
+
+
         mri[train_valid] = mri[train_valid][0 : mri_size].reshape(-1, n_width*n_height)
-        mgc[train_valid] = mgc[train_valid][0 : mgc_size]
 
 
     
@@ -392,25 +393,18 @@ for speaker in ['f1', 'f2', 'm1', 'm2']:
     
     # input: normalization to zero mean, unit variance
     # feature by feature
-    mgc_scalers = []
-    for i in range(n_mgc):
-        mgc_scaler = StandardScaler(with_mean=True, with_std=True)
-        mgc_scalers.append(mgc_scaler)
-        mgc['train'][:, i] = mgc_scalers[i].fit_transform(mgc['train'][:, i].reshape(-1, 1)).ravel()
-        mgc['valid'][:, i] = mgc_scalers[i].transform(mgc['valid'][:, i].reshape(-1, 1)).ravel()
-        
-        # restructure for LSTM
+
     for train_valid in ['train', 'valid']:
-        mgc[train_valid], mri[train_valid] = create_dataset_img_inverse(mgc[train_valid], mri[train_valid], look_back = n_sequence)
-        
+
         mri[train_valid] = mri[train_valid].reshape(-1, n_width * n_height)
     
-    
-    dataset = TensorDataset(X_train, y_train)
+    y_train = torch.tensor(mri['train'])
+    X_train = torch.tensor(sound['train'])
+    dataset_train = torch.utils.data.TensorDataset(X_train, y_train)
 
 
 
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+    dataloader_train = torch.utils.data.DataLoader(dataset_train, batch_size=batch_size,
                                          shuffle=True, num_workers=workers)    
     
     # Create the generator
@@ -456,4 +450,4 @@ for speaker in ['f1', 'f2', 'm1', 'm2']:
     print("Starting Training Loop...")
     # For each epoch
     for epoch in range(num_epochs):
-        train_epoch(netD, netG, optimizerD, optimizerG, dataloader)
+        train_epoch(netD, netG, optimizerD, optimizerG, dataloader_train)
