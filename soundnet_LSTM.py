@@ -57,14 +57,8 @@ image_size = 68
 # Number of channels in the training images. For color images this is 3
 nc = 1
 
-# Size of z latent vector (i.e. size of generator input)
+# Size of input vector
 nz = 1024
-
-# Size of feature maps in generator
-ngf = 68
-
-# Size of feature maps in discriminator
-ndf = 68
 
 # Number of training epochs
 num_epochs = 5
@@ -167,6 +161,8 @@ def create_dataset_img_inverse(data_in_X, data_in_Y, look_back=1):
             data_out_X[i, j] = data_in_X[i + j]
         data_out_Y[i] = data_in_Y[i + j]
     return data_out_X, data_out_Y
+
+
 criterion = nn.MSELoss()
 for speaker in ['f2']:
     # TODO: modify this according to your data path
