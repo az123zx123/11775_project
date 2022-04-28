@@ -7,11 +7,8 @@ Created on Sun Apr 24 15:08:53 2022
 
 import numpy as np
 import matplotlib.pyplot as plt
-import scipy.io.wavfile as io_wav
 import os
 import os.path
-import datetime
-import pickle
 import cv2
 import random
 from tqdm import trange
@@ -32,10 +29,6 @@ import torchvision.utils as vutils
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from IPython.display import HTML
-
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 from numpy import genfromtxt
 
@@ -114,18 +107,15 @@ def train_single(net, optimizer, x_train, y_train):
 
 def eval_single(net, x_val, y_val):
     net.eval()
-    X = x_train
-    y = y_train
     with torch.no_grad():
-        output = net(X)[0]
-        err = criterion(output, y)
+        output = net(x_val)[0]
+        err = criterion(output, y_val)
     return err.item()
 
 def test_single(net, x_test):
     net.eval()
-    X = x_train
     with torch.no_grad():
-        output = net(X)[0]
+        output = net(x_test)[0]
     np.save("result", output.cpu().detach().numpy())
 
 # parameters
@@ -139,12 +129,10 @@ batch_size = 128
 image_size = 68 # All images will be resized to this size using a transformer.
 nc = 1 # Number of channels in the training images. For color images this is 3
 nz = 768 # Size of input vector
-num_epochs = 5 
-lr = 0.0002 
-ngpu = 1 
-device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
-beta1 = 0.5 # Beta1 hyperparam for Adam optimizers
+num_epochs = 15
+lr = 0.0002
 ngpu = 1 # Number of GPUs available. Use 0 for CPU mode.
+device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
 
 criterion = nn.MSELoss()
 for speaker in ['F2']:
@@ -221,8 +209,8 @@ for speaker in ['F2']:
     cuda = torch.cuda.is_available()
     device = torch.device("cuda" if cuda else "cpu")
     net = Network(nz, n_width*n_height).to(device)
-    optimizerLSTM = optim.Adam(net.parameters(), lr=lr, betas=(beta1, 0.999))
-    for epoch in range(1):
+    optimizerLSTM = optim.Adam(net.parameters(), lr=lr)
+    for epoch in range(num_epochs):
         train_err_avg = 0
         for i in trange(len(mri["train"])):
             x_train = sound["train"][i].to(device)
