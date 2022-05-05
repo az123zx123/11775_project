@@ -74,7 +74,7 @@ class Network(nn.Module):
         super(Network, self).__init__()
         self.ngpu = ngpu
         self.main = nn.Sequential(
-            torch.nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=2),
+            torch.nn.LSTM(input_size=input_size, hidden_size=hidden_size, num_layers=3),
         )
     def forward(self, input):
         return self.main(input)
@@ -163,7 +163,7 @@ for speaker in ['F2']:
     random.shuffle(files['all'])
     
     files['valid'] = files['all'][0:4]
-    files['test'] = files['all'][4:6]
+    files['test'] = files['all'][4:6] # usctimit_mri_f2_441_445 usctimit_mri_f2_146_150
     files['train'] = files['all'][6:]
     
     print('valid files', files['valid'])
