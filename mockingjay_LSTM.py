@@ -178,6 +178,7 @@ for speaker in ['F2']:
 
     mri = dict()    # MRI data, labels in training
     sound = dict()  # audio feature, input data in training
+    template = torch.zeros(size=(n_height, n_width))
     for train_valid in ['train', 'valid', "test"]:
         mri[train_valid] = []
         mri[train_valid+"_framenums"] = []
@@ -197,6 +198,7 @@ for speaker in ['F2']:
             video_frame_num = mri_data.shape[0]
             mri[train_valid].append(mri_data.reshape(video_frame_num, -1))
             mri[train_valid+"_framenums"].append(video_frame_num)
+            template += torch.mean(mri_data, dim=0)
 
             audio_data = torch.from_numpy(audio_data)
             audio_frame_num = audio_data.shape[0]
@@ -205,15 +207,19 @@ for speaker in ['F2']:
             for i in range(video_frame_num):
                 audio_indices.append(int(i*audio_frame_num/video_frame_num))
             sound[train_valid].append(audio_data[audio_indices])
+    template /= len(files['all'])
+    plt.imsave("template.png", template)
+    template = template.reshape(-1)
     
     cuda = torch.cuda.is_available()
     device = torch.device("cuda" if cuda else "cpu")
-    net = Network(nz, n_width*n_height).to(device)
+    net = Network(nz+n_width*n_height, n_width*n_height).to(device)
     optimizerLSTM = optim.Adam(net.parameters(), lr=lr)
     for epoch in range(num_epochs):
         train_err_avg = 0
         for i in trange(len(mri["train"])):
             x_train = sound["train"][i].to(device)
+            x_train = torch.cat((x_train, template.repeat(x_train.shape[0], 1)), axis=1)
             y_train = mri["train"][i].to(device)
             train_err = train_single(net, optimizerLSTM, x_train.float(), y_train.float())
             train_err_avg += train_err
