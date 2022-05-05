@@ -96,10 +96,8 @@ def train_epoch(net, optimizer, dataloader):
 def train_single(net, optimizer, x_train, y_train):
     net.train()
     optimizer.zero_grad()
-    X = x_train
-    y = y_train
-    output = net(X)[0]
-    err = criterion(output, y)
+    output = net(x_train)[0]
+    err = criterion(output, y_train)
     # Calculate gradients for D in backward pass
     err.backward()
     optimizer.step()
@@ -209,7 +207,7 @@ for speaker in ['F2']:
             sound[train_valid].append(audio_data[audio_indices])
     template /= len(files['all'])
     plt.imsave("template.png", template)
-    template = template.reshape(-1)
+    template = template.reshape(-1).to(device)
     
     cuda = torch.cuda.is_available()
     device = torch.device("cuda" if cuda else "cpu")
@@ -227,10 +225,12 @@ for speaker in ['F2']:
         val_err_avg = 0
         for i in range(len(mri["valid"])):
             x_val = sound["valid"][i].to(device)
+            x_val = torch.cat((x_val, template.repeat(x_val.shape[0], 1)), axis=1)
             y_val = mri["valid"][i].to(device)
             val_err = eval_single(net, x_val, y_val)
             val_err_avg += val_err
         val_err_avg /= len(mri["valid"])
         print(f"epoch {epoch}: training error {train_err_avg}, validation error {val_err_avg}")
     x_test = sound["test"][0].to(device)
+    x_test = torch.cat((x_test, template.repeat(x_test.shape[0], 1)), axis=1)
     test_single(net, x_test)
